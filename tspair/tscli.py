@@ -37,6 +37,7 @@ class PeerInfo:
     hostname: str
     online: bool
     ip: str  # peer's Tailscale IP (100.x.y.z)
+    advertised_exit_node: bool = False  # peer advertises itself as an exit node
 
 
 @dataclass
@@ -45,6 +46,7 @@ class PeerEntry:
     dns_name: str
     ip: str
     online: bool
+    advertised_exit_node: bool = False
 
 
 def list_peers() -> list[PeerEntry]:
@@ -58,6 +60,7 @@ def list_peers() -> list[PeerEntry]:
             dns_name=str(p.get("DNSName", "")).rstrip("."),
             ip=ips[0] if ips else "",
             online=bool(p.get("Online")),
+            advertised_exit_node=bool(p.get("AdvertisedExitNode")),
         ))
     return peers
 
@@ -72,7 +75,8 @@ def detect_peer() -> Optional[PeerInfo]:
     if len(peers) != 1:
         return None
     p = peers[0]
-    return PeerInfo(hostname=p.hostname, online=p.online, ip=p.ip)
+    return PeerInfo(hostname=p.hostname, online=p.online, ip=p.ip,
+                    advertised_exit_node=p.advertised_exit_node)
 
 
 def set_exit_node(peer_ip: str) -> None:

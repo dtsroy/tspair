@@ -49,6 +49,8 @@ class TrayApp:
         c = self.coord
         connected = c.link.is_connected()
         peer_txt = "peer: connected" if connected else "peer: offline"
+        if c.peer_advertised:
+            peer_txt += " (exit node advertised)"
 
         items = [
             pystray.MenuItem(c.status_line(), None, enabled=False),
@@ -56,12 +58,9 @@ class TrayApp:
             pystray.MenuItem(f"mode: {c.link.role}", None, enabled=False),
             pystray.Menu.SEPARATOR,
         ]
-        can_use = connected and c.state == ExitState.NONE \
-            and c.peer_state != ExitState.USING_OTHER
         items.append(pystray.MenuItem(
             "Use peer as exit node",
             lambda *_: self._run_action("use_peer", c.use_peer),
-            enabled=can_use,
         ))
         items.append(pystray.MenuItem(
             "Stop using peer as exit node",

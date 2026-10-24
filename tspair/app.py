@@ -52,10 +52,12 @@ def main() -> None:
                     tray[0].notify("No other device found in the tailnet.")
                     warned_missing = True
             else:
-                log.info("[discovery] peer detected: %s (%s), %s",
-                         peer.hostname, peer.ip, "online" if peer.online else "offline")
+                log.info("[discovery] peer detected: %s (%s), %s, exit-node advertised=%s",
+                         peer.hostname, peer.ip, "online" if peer.online else "offline",
+                         peer.advertised_exit_node)
                 warned_missing = False
                 coord.set_peer_ip(peer.ip)
+                coord.set_peer_advertised(peer.advertised_exit_node)
                 if peer.online and cfg.role == "client":
                     log.info("[discovery] role=client, peer online -> dialing %s", peer.ip)
                     coord.link.dial(peer.ip)
@@ -66,9 +68,10 @@ def main() -> None:
             if manual:
                 log.info("[discovery] manual refresh: peer re-detection done, updating tray")
                 if peer is not None:
+                    mode = ", advertising as exit node" if peer.advertised_exit_node else ""
                     tray[0].notify(
                         f"Peer {peer.hostname} ({peer.ip}) is "
-                        f"{'online' if peer.online else 'offline'}."
+                        f"{'online' if peer.online else 'offline'}{mode}."
                     )
                 else:
                     tray[0].notify("No other device found in the tailnet.")

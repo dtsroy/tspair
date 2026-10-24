@@ -43,6 +43,7 @@ class Coordinator:
         self._state = ExitState.NONE
         self._peer_state: Optional[ExitState] = None
         self._peer_ip = ""
+        self._peer_advertised: Optional[bool] = None  # peer advertises as exit node (from CLI)
         self._reply = threading.Event()      # set when GRANT/DENY arrives
         self._reply_granted = False
         self._reply_reason = ""
@@ -64,6 +65,19 @@ class Coordinator:
         theirs = LABELS[self._peer_state] if self._peer_state else "unknown"
         return f"{peer} | Us: {mine} | Peer: {theirs}"
 
+    @property
+    def peer_advertised(self) -> Optional[bool]:
+        """True/False once the CLI reported the peer's exit-node advertisement."""
+        return self._peer_advertised
+
+    def set_peer_advertised(self, advertised: bool) -> None:
+        """Record the peer's real exit-node advertisement from `tailscale status`."""
+        if advertised != self._peer_advertised:
+            log.info("peer exit-node advertisement: %s -> %s", self._peer_advertised, advertised)
+        self._peer_advertised = advertised
+        if advertised:
+            self.on_change()
+
     def set_peer_ip(self, ip: str) -> None:
         self._peer_ip = ip
 
@@ -75,9 +89,6 @@ class Coordinator:
             if self._state != ExitState.NONE:
                 log.warning("[use_peer] step 1/5 refused: this device is %s", LABELS[self._state])
                 return False, f"Cannot start: this device is {LABELS[self._state]}."
-            if self._peer_state == ExitState.USING_OTHER:
-                log.warning("[use_peer] step 1/5 refused: peer already uses this device")
-                return False, "Peer is already using this device as its exit node."
             if not self.link.is_connected():
                 log.warning("[use_peer] step 1/5 refused: link is down")
                 return False, "Peer is not connected."
@@ -227,9 +238,8 @@ class Coordinator:
                 self.link.send({"type": "DENY", "reason": "routing loop: both devices would use each other"})
                 return
             if self._state == ExitState.BEING_USED:
-                log.warning("[provider] denying: already BEING_USED")
-                self.link.send({"type": "DENY", "reason": "already serving someone else"})
-                return
+                # Already advertising for the peer — keep advertising and grant again.
+                log.info("[provider] already BEING_USED; re-granting (advertisement unchanged)")
 
             # Simultaneous requests: larger device_id yields.
             if self._pending_out and not self._reply.is_set():
