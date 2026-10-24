@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Callable, Optional
 
 from . import tscli
@@ -28,6 +29,9 @@ from .link import PeerLink
 log = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = 10.0  # seconds to wait for GRANT/DENY
+GRANT_SETTLE_DELAY = 3.0  # peer's exit-node advertisement needs time to propagate after GRANT
+EXIT_NODE_RETRIES = 2  # extra attempts when tailscale doesn't see the peer's advertisement yet
+RETRY_WAIT = 2.0  # seconds between exit-node apply retries
 
 
 class Coordinator:
@@ -113,14 +117,30 @@ class Coordinator:
             if not peer_ip:
                 log.warning("[use_peer] step 4/5 aborted: peer Tailscale IP not discovered yet")
                 return False, "Peer Tailscale IP unknown yet; try again shortly."
-            log.info("[use_peer] step 4/5 applying exit node via tailscale CLI (target %s)", peer_ip)
-            try:
-                tscli.set_exit_node(peer_ip)
-            except tscli.TailscaleError as e:
+            # The peer has just advertised itself as an exit node; give the
+            # tailscale backend time to propagate that before we point at it.
+            log.info("[use_peer] step 4/5 waiting %.0fs for the peer's advertisement to "
+                     "propagate, then applying exit node (target %s)", GRANT_SETTLE_DELAY, peer_ip)
+            time.sleep(GRANT_SETTLE_DELAY)
+            last_err: Optional[tscli.TailscaleError] = None
+            for attempt in range(1 + EXIT_NODE_RETRIES):
+                try:
+                    tscli.set_exit_node(peer_ip)
+                    last_err = None
+                    break
+                except tscli.TailscaleError as e:
+                    last_err = e
+                    if attempt < EXIT_NODE_RETRIES:
+                        log.warning("[use_peer] step 4/5 attempt %d failed (%s); retrying in %.0fs "
+                                    "(peer's advertisement may not be visible yet)",
+                                    attempt + 1, e, RETRY_WAIT)
+                        time.sleep(RETRY_WAIT)
+            if last_err is not None:
                 # Provider is left advertising with no user — tell it to unwind.
-                log.error("[use_peer] step 4/5 failed: tailscale rejected exit node: %s", e)
+                log.error("[use_peer] step 4/5 failed after %d attempts: %s",
+                          1 + EXIT_NODE_RETRIES, last_err)
                 self.link.send({"type": "USE_FAILED"})
-                return False, f"tailscale rejected the exit node: {e}"
+                return False, f"tailscale rejected the exit node: {last_err}"
             log.info("[use_peer] step 4/5 exit node applied")
         finally:
             with self._lock:
