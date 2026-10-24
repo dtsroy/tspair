@@ -73,36 +73,51 @@ class Coordinator:
         """Try to route this device's traffic via the peer (NONE -> USING_OTHER)."""
         with self._lock:
             if self._state != ExitState.NONE:
+                log.warning("[use_peer] step 1/5 refused: this device is %s", LABELS[self._state])
                 return False, f"Cannot start: this device is {LABELS[self._state]}."
             if self._peer_state == ExitState.USING_OTHER:
+                log.warning("[use_peer] step 1/5 refused: peer already uses this device")
                 return False, "Peer is already using this device as its exit node."
             if not self.link.is_connected():
+                log.warning("[use_peer] step 1/5 refused: link is down")
                 return False, "Peer is not connected."
+            log.info("[use_peer] step 1/5 preconditions ok (state=%s, peer_state=%s)",
+                     LABELS[self._state], LABELS[self._peer_state] if self._peer_state else "unknown")
             self._reply.clear()
             self._pending_out = True
         try:
             if not self.link.send({"type": "REQ_USE"}):
+                log.warning("[use_peer] step 2/5 failed: could not send REQ_USE (link dropped)")
                 return False, "Peer is not connected."
+            log.info("[use_peer] step 2/5 REQ_USE sent; waiting for peer reply (timeout %ss)", REQUEST_TIMEOUT)
             if not self._reply.wait(REQUEST_TIMEOUT):
+                log.warning("[use_peer] step 3/5 timed out: no GRANT/DENY within %ss", REQUEST_TIMEOUT)
                 return False, "Peer did not answer the request (timeout)."
             if not self._reply_granted:
+                log.warning("[use_peer] step 3/5 peer DENYed: %s", self._reply_reason or "unknown reason")
                 return False, f"Peer refused: {self._reply_reason or 'unknown reason'}"
+            log.info("[use_peer] step 3/5 peer GRANTed the request")
 
             peer_ip = self._peer_ip
             if not peer_ip:
+                log.warning("[use_peer] step 4/5 aborted: peer Tailscale IP not discovered yet")
                 return False, "Peer Tailscale IP unknown yet; try again shortly."
+            log.info("[use_peer] step 4/5 applying exit node via tailscale CLI (target %s)", peer_ip)
             try:
                 tscli.set_exit_node(peer_ip)
             except tscli.TailscaleError as e:
                 # Provider is left advertising with no user — tell it to unwind.
+                log.error("[use_peer] step 4/5 failed: tailscale rejected exit node: %s", e)
                 self.link.send({"type": "USE_FAILED"})
                 return False, f"tailscale rejected the exit node: {e}"
+            log.info("[use_peer] step 4/5 exit node applied")
         finally:
             with self._lock:
                 self._pending_out = False
 
         with self._lock:
             self._state = ExitState.USING_OTHER
+        log.info("[use_peer] step 5/5 state -> USING_OTHER; broadcasting to peer")
         self._broadcast_state()
         return True, f"Now using peer ({peer_ip}) as exit node."
 
@@ -110,7 +125,21 @@ class Coordinator:
         """Stop routing via the peer (USING_OTHER -> NONE). Provider unwinds on its own."""
         with self._lock:
             if self._state != ExitState.USING_OTHER:
+                log.warning("[stop_using] refused: this device is %s, not USING_OTHER",
+                            LABELS[self._state])
                 return False, "This device is not using the peer as exit node."
+            log.info("[stop_using] step 1/3 state is USING_OTHER; clearing exit node")
+        try:
+            tscli.clear_exit_node()
+        except tscli.TailscaleError as e:
+            log.error("[stop_using] step 2/3 failed: could not clear exit node: %s", e)
+            return False, f"Failed to clear exit node: {e}"
+        log.info("[stop_using] step 2/3 exit node cleared via tailscale CLI")
+        with self._lock:
+            self._state = ExitState.NONE
+        log.info("[stop_using] step 3/3 state -> NONE; broadcasting to peer")
+        self._broadcast_state()  # peer sees NONE and un-advertises by itself
+        return True, "Back to normal routing."
         try:
             tscli.clear_exit_node()
         except tscli.TailscaleError as e:
@@ -190,31 +219,38 @@ class Coordinator:
     # ---- provider side of the handshake ---------------------------------
 
     def _handle_request(self) -> None:
+        log.info("[provider] REQ_USE received from peer")
         with self._lock:
             # I'm routing via the peer: granting would create a loop.
             if self._state == ExitState.USING_OTHER:
+                log.warning("[provider] denying: routing loop (this device is USING_OTHER)")
                 self.link.send({"type": "DENY", "reason": "routing loop: both devices would use each other"})
                 return
             if self._state == ExitState.BEING_USED:
+                log.warning("[provider] denying: already BEING_USED")
                 self.link.send({"type": "DENY", "reason": "already serving someone else"})
                 return
 
             # Simultaneous requests: larger device_id yields.
             if self._pending_out and not self._reply.is_set():
                 if self._id > _peer_id_of(self.link):
+                    log.info("[provider] simultaneous request: this device yields (larger id)")
                     self.link.send({"type": "DENY", "reason": "simultaneous request; I yielded to you"})
                     return
                 # They will yield to us (their id is larger) and grant ours.
+                log.info("[provider] simultaneous request: peer yields to this device")
 
+            log.info("[provider] advertising this device as exit node via tailscale CLI")
             try:
                 tscli.advertise_exit_node(True)
             except tscli.TailscaleError as e:
+                log.error("[provider] denying: advertise failed: %s", e)
                 self.link.send({"type": "DENY", "reason": f"tailscale error: {e}"})
                 return
             self._state = ExitState.BEING_USED
         self.link.send({"type": "GRANT"})
+        log.info("[provider] GRANT sent; state -> BEING_USED")
         self._broadcast_state()
-        log.info("peer may now use this device as exit node")
 
 
 def _peer_id_of(link: PeerLink) -> str:

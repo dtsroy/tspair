@@ -45,21 +45,26 @@ def main() -> None:
             try:
                 peer = tscli.detect_peer()
             except tscli.TailscaleError as e:
-                log.warning("tailscale status failed: %s", e)
+                log.warning("[discovery] `tailscale status` failed: %s", e)
             if peer is None:
+                log.info("[discovery] no single other device found in the tailnet")
                 if not warned_missing and tray:
                     tray[0].notify("No other device found in the tailnet.")
                     warned_missing = True
             else:
+                log.info("[discovery] peer detected: %s (%s), %s",
+                         peer.hostname, peer.ip, "online" if peer.online else "offline")
                 warned_missing = False
                 coord.set_peer_ip(peer.ip)
                 if peer.online and cfg.role == "client":
+                    log.info("[discovery] role=client, peer online -> dialing %s", peer.ip)
                     coord.link.dial(peer.ip)
 
             # Sleep until the next tick, or return early on a manual refresh.
             manual = refresh_now.wait(cfg.status_interval)
             refresh_now.clear()
-            if manual and tray:
+            if manual:
+                log.info("[discovery] manual refresh: peer re-detection done, updating tray")
                 if peer is not None:
                     tray[0].notify(
                         f"Peer {peer.hostname} ({peer.ip}) is "

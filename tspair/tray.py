@@ -60,40 +60,49 @@ class TrayApp:
             and c.peer_state != ExitState.USING_OTHER
         items.append(pystray.MenuItem(
             "Use peer as exit node",
-            lambda *_: self._run_action(c.use_peer),
+            lambda *_: self._run_action("use_peer", c.use_peer),
             enabled=can_use,
         ))
         items.append(pystray.MenuItem(
             "Stop using peer as exit node",
-            lambda *_: self._run_action(c.stop_using_peer),
+            lambda *_: self._run_action("stop_using_peer", c.stop_using_peer),
             enabled=c.state == ExitState.USING_OTHER,
         ))
         items.append(pystray.MenuItem(
             "Refresh now",
-            lambda *_: self._on_refresh() if self._on_refresh else None,
+            lambda *_: self._refresh_clicked(),
             enabled=self._on_refresh is not None,
         ))
-        items += [pystray.Menu.SEPARATOR, pystray.MenuItem("Quit", lambda *_: self._on_quit())]
+        items += [pystray.Menu.SEPARATOR, pystray.MenuItem(
+            "Quit", lambda *_: (log.info("[tray] button 'quit' clicked"), self._on_quit())
+        )]
         # Menu(*items): each positional arg is one item — passing the list
         # itself would store a bare list as a menu entry and crash pystray.
         return pystray.Menu(*items)
 
     # ---- actions / updates ---------------------------------------------
 
-    def _run_action(self, fn: Callable[[], tuple[bool, str]]) -> None:
+    def _run_action(self, name: str, fn: Callable[[], tuple[bool, str]]) -> None:
         """Run a coordinator action off the menu thread, report via notification."""
 
         def worker() -> None:
+            log.info("[tray] button %r clicked -> running action", name)
             try:
                 ok, msg = fn()
             except Exception:  # never let the tray die on an action
-                log.exception("tray action failed")
+                log.exception("[tray] action %r raised", name)
                 ok, msg = False, "Unexpected error (see log)."
+            log.info("[tray] action %r finished: ok=%s (%s)", name, ok, msg)
             self.icon.notify(msg, APP_TITLE)
             self.refresh()
             threading.Timer(4.0, self.icon.remove_notification).start()
 
         threading.Thread(target=worker, daemon=True, name="tray-action").start()
+
+    def _refresh_clicked(self) -> None:
+        log.info("[tray] button 'refresh' clicked -> triggering peer re-detection")
+        if self._on_refresh:
+            self._on_refresh()
 
     def refresh(self) -> None:
         self.icon.icon = _make_image(self.coord.state)
