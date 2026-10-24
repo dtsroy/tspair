@@ -62,25 +62,17 @@ def list_peers() -> list[PeerEntry]:
     return peers
 
 
-def find_peer(hostname: str) -> Optional[PeerInfo]:
-    """Look up the configured peer in `tailscale status --json`.
+def detect_peer() -> Optional[PeerInfo]:
+    """The one other device in the tailnet, from `tailscale status --json`.
 
-    Returns None if the device is not in the tailnet (never paired /
-    removed), regardless of online state.
+    The pair setup assumes this device plus exactly one peer; returns None
+    when that doesn't hold (no other device, or more than one).
     """
-    data = json.loads(_run(["status", "--json"]))
-    peers = data.get("Peer") or {}
-    want = hostname.lower()
-    for p in peers.values():
-        names = {str(p.get("HostName", "")).lower(), str(p.get("DNSName", "")).lower().rstrip(".")}
-        if want in names:
-            ips = p.get("TailscaleIPs") or []
-            return PeerInfo(
-                hostname=p.get("HostName", hostname),
-                online=bool(p.get("Online")),
-                ip=ips[0] if ips else "",
-            )
-    return None
+    peers = list_peers()
+    if len(peers) != 1:
+        return None
+    p = peers[0]
+    return PeerInfo(hostname=p.hostname, online=p.online, ip=p.ip)
 
 
 def set_exit_node(peer_ip: str) -> None:

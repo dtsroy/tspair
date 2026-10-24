@@ -32,9 +32,11 @@ def _make_image(state: ExitState) -> Image.Image:
 
 
 class TrayApp:
-    def __init__(self, coord: Coordinator, on_quit: Callable[[], None]) -> None:
+    def __init__(self, coord: Coordinator, on_quit: Callable[[], None],
+                 on_refresh: Callable[[], None] | None = None) -> None:
         self.coord = coord
         self._on_quit = on_quit
+        self._on_refresh = on_refresh
         coord.on_change = self.refresh
         self.icon = pystray.Icon(
             APP_TITLE, _make_image(coord.state), APP_TITLE,
@@ -65,6 +67,11 @@ class TrayApp:
             "Stop using peer as exit node",
             lambda *_: self._run_action(c.stop_using_peer),
             enabled=c.state == ExitState.USING_OTHER,
+        ))
+        items.append(pystray.MenuItem(
+            "Refresh now",
+            lambda *_: self._on_refresh() if self._on_refresh else None,
+            enabled=self._on_refresh is not None,
         ))
         items += [pystray.Menu.SEPARATOR, pystray.MenuItem("Quit", lambda *_: self._on_quit())]
         # Menu(*items): each positional arg is one item — passing the list

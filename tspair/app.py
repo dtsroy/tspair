@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 
 from . import tscli
 from .config import load
@@ -22,39 +21,57 @@ def main() -> None:
     cfg = load()
     coord = Coordinator(cfg.device_id, cfg.role, cfg.port, cfg.ping_interval)
     tray: list[TrayApp] = []
+    refresh_now = threading.Event()  # set by the tray's "Refresh now" item
 
     def start_tray() -> None:
-        app = TrayApp(coord, on_quit=lambda: tray[0].stop() if tray else None)
+        app = TrayApp(
+            coord,
+            on_quit=lambda: tray[0].stop() if tray else None,
+            on_refresh=refresh_now.set,
+        )
         tray.append(app)
         app.run()
 
     def discovery_loop() -> None:
-        """Periodically find the peer via the tailscale CLI.
+        """Periodically detect the peer via the tailscale CLI.
 
-        Both roles need the peer's IP (as the exit-node target), but only the
-        client dials — the server just listens.
+        The peer is whatever single other device shows up in
+        `tailscale status` — nothing about it is persisted. Both roles need
+        its IP (as the exit-node target), but only the client dials.
         """
         warned_missing = False
         while True:
+            peer = None
             try:
-                info = tscli.find_peer(cfg.peer_hostname)
+                peer = tscli.detect_peer()
             except tscli.TailscaleError as e:
                 log.warning("tailscale status failed: %s", e)
-                info = None
-            if info is None:
+            if peer is None:
                 if not warned_missing and tray:
-                    tray[0].notify(f"Device '{cfg.peer_hostname}' not found in the tailnet.")
+                    tray[0].notify("No other device found in the tailnet.")
                     warned_missing = True
             else:
                 warned_missing = False
-                coord.set_peer_ip(info.ip)
-                if info.online and cfg.role == "client":
-                    coord.link.dial(info.ip)
-            time.sleep(cfg.status_interval)
+                coord.set_peer_ip(peer.ip)
+                if peer.online and cfg.role == "client":
+                    coord.link.dial(peer.ip)
+
+            # Sleep until the next tick, or return early on a manual refresh.
+            manual = refresh_now.wait(cfg.status_interval)
+            refresh_now.clear()
+            if manual and tray:
+                if peer is not None:
+                    tray[0].notify(
+                        f"Peer {peer.hostname} ({peer.ip}) is "
+                        f"{'online' if peer.online else 'offline'}."
+                    )
+                else:
+                    tray[0].notify("No other device found in the tailnet.")
+                tray[0].refresh()
 
     threading.Thread(target=discovery_loop, daemon=True, name="discovery").start()
     coord.link.start()
-    log.info("tspair started (device_id=%s, peer=%s)", cfg.device_id[:8], cfg.peer_hostname)
+    log.info("tspair started (device_id=%s, role=%s)", cfg.device_id[:8], cfg.role)
     start_tray()  # blocks until Quit
 
 

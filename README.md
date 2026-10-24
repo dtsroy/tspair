@@ -8,7 +8,9 @@ Windows system-tray app (Python + [pystray](https://pystray.readthedocs.io/)).
 - Keeps a tray icon running that shows the pair's exit-node relationship at a glance
   (icon color + tooltip + menu).
 - Finds the peer device by shelling out to the `tailscale` CLI (`tailscale status --json`) —
-  the CLI is the single source of truth; no HTTP API is used.
+  the CLI is the single source of truth; no HTTP API is used. The peer is **not** stored in
+  the config: it is detected on every cycle as the single other device in the tailnet
+  (the *Refresh now* tray item re-runs detection immediately).
 - Connects the two apps over a plain TCP socket inside the tailnet and keeps it alive
   with heartbeats.
 - Manages the **exit-node state machine** so the two devices can never route through
@@ -57,15 +59,18 @@ role doesn't matter; it only decides who dials whom.)
 
    ```json
    {
-     "peer_hostname": "friends-device",  // hostname as shown by `tailscale status`
-     "role": "client",                   // "client" here, "server" on the other device
+     "role": "client",     // "client" here, "server" on the other device
      "port": 52520,
      "device_id": "auto-generated"
    }
    ```
 
+   No peer hostname is configured — the app expects the tailnet to contain
+   exactly these two devices and finds the peer on its own.
+
 5. Run `python -m tspair` again. Use the tray menu to
-   *Use peer as exit node* / *Stop using peer as exit node*.
+   *Use peer as exit node* / *Stop using peer as exit node*; *Refresh now*
+   re-runs peer detection immediately instead of waiting for the next cycle.
 
 ### Tailnet-side note
 
