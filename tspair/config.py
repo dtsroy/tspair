@@ -24,17 +24,11 @@ class Config:
 
     @staticmethod
     def default_path() -> Path:
+        """Config lives in the project root (repo folder), on every platform."""
         env = os.environ.get("TSPAIR_CONFIG")
         if env:
             return Path(env)
-        home = Path.home()
-        if sys.platform == "win32" and os.environ.get("APPDATA"):
-            base = Path(os.environ["APPDATA"]) / "tspair"          # %APPDATA%\tspair
-        elif sys.platform == "darwin":
-            base = home / "Library" / "Application Support" / "tspair"
-        else:  # linux & other unix: XDG convention
-            base = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config")) / "tspair"
-        return base / CONFIG_NAME
+        return Path(__file__).resolve().parent.parent / CONFIG_NAME
 
 
 def _ask_peer_hostname() -> str:
