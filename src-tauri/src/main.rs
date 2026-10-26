@@ -135,7 +135,11 @@ fn main() {
                 cli.clone(),
                 Timings::default(),
             );
-            coord.start();
+            // start() spawns the link's tokio tasks, which needs a runtime
+            // context; setup() runs on the main thread, so enter one.
+            tauri::async_runtime::block_on(async {
+                coord.start();
+            });
             info!(
                 "tspair started (device_id={}, role={})",
                 &cfg.device_id[..cfg.device_id.len().min(8)],
