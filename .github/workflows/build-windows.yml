@@ -49,6 +49,15 @@ jobs:
           # No release tagName → artifacts only; add a tagName to publish.
           args: ""
 
+      - name: Stage portable executable
+        shell: pwsh
+        run: |
+          # Tauri embeds the frontend in the exe, so the raw binary is a
+          # self-contained portable build (needs the WebView2 runtime, which
+          # ships with Windows 11).
+          New-Item -ItemType Directory -Force -Path portable | Out-Null
+          Copy-Item src-tauri/target/release/tspair.exe portable/tspair.exe
+
       - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
@@ -56,4 +65,11 @@ jobs:
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+
+      - name: Upload portable executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: tspair-windows-portable
+          path: portable/tspair.exe
           if-no-files-found: error

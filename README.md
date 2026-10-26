@@ -65,9 +65,11 @@ Set `TSPAIR_CONFIG=<path>` to override (handy in development).
 
 ## Packaging
 
-GitHub Actions build signed installers from this repo: `build-windows.yml`
-(NSIS/MSI) and `build-macos.yml` (universal `.dmg`). macOS releases are
-unsigned unless Apple Developer secrets are configured (see plan.md §3.5).
+GitHub Actions build the installers from this repo: `build-windows.yml`
+(NSIS/MSI plus a standalone portable `tspair.exe` artifact) and
+`build-macos.yml` (universal `.dmg`). The portable exe needs the WebView2
+runtime, which is preinstalled on Windows 11. macOS builds are unsigned
+unless Apple Developer secrets are configured (see plan.md §3.5).
 
 The original Python implementation is archived under
 [archive/](archive/README.md).
