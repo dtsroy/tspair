@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>tspair</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main id="app">
+      <header>
+        <h1>tspair</h1>
+        <span id="conn-dot" class="dot off"></span>
+        <span id="conn-label">connecting…</span>
+      </header>
+
+      <section class="states">
+        <div class="card">
+          <h2>This device</h2>
+          <div id="mine" class="state state-none">…</div>
+        </div>
+        <div class="card">
+          <h2>Peer</h2>
+          <div id="peer" class="state state-unknown">…</div>
+        </div>
+      </section>
+
+      <section class="card peer-card">
+        <h2>Peer device</h2>
+        <div id="peer-info" class="peer-info">Not detected yet.</div>
+      </section>
+
+      <section class="actions">
+        <button id="btn-use">Use peer as exit node</button>
+        <button id="btn-stop" disabled>Stop using peer</button>
+        <button id="btn-refresh">Refresh now</button>
+      </section>
+
+      <section class="card">
+        <h2>Config</h2>
+        <div class="cfg-grid">
+          <label>Role</label><input id="cfg-role" readonly />
+          <label>Port</label><input id="cfg-port" readonly />
+          <label>Ping interval (s)</label><input id="cfg-ping" type="number" min="1" step="1" />
+          <label>Status interval (s)</label><input id="cfg-status" type="number" min="5" step="1" />
+        </div>
+        <div class="cfg-actions">
+          <button id="btn-save-cfg">Save intervals</button>
+          <span id="cfg-note"></span>
+        </div>
+      </section>
+
+      <section class="card grow">
+        <h2>Log</h2>
+        <div id="log" class="log"></div>
+      </section>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

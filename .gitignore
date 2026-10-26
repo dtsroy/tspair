@@ -1,5 +1,10 @@
 __pycache__/
 *.pyc
 .venv/
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
 tspair.json
 tspair.local.json
+.claude/
